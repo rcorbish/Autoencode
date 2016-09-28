@@ -1,2 +1,2 @@
-# Remix
-Attempt to use a LSTM to analyze mp3 songs
+# Autoencode
+Use a deep belief autoencoder to analyze MNIST digits
