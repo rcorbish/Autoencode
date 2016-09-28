@@ -1,0 +1,131 @@
+extends layout
+
+block content
+  h1 DBNA
+		
+  #score
+  
+  canvas#draw( width=28, height=28 )
+  canvas#result( width=28, height=28 )
+  canvas#layers( width=1200, height=100 )
+  br
+  button#clear Clear
+  button#process Process
+  
+  script.
+    var score = document.getElementById( "score" ) ;
+    
+    var protocol = window.location.protocol ;
+    if( protocol === "http:" ) protocol = "ws:" ; else protocol = "wss:" ;
+    var addr = protocol + "//" + location.hostname + ":" + location.port + "/data/" ;
+    var webSocket = new WebSocket( addr ) ;
+
+    var result  = document.getElementById( "result" ) ;
+    var ctxResult = result.getContext("2d");
+
+    var layers = document.getElementById( "layers" ) ;
+    var ctxLayers = layers.getContext("2d");
+    
+    var imgs = [] ;
+    
+    webSocket.onmessage = function (event) {
+      var d = event.data ;
+      if( typeof d === 'string' ) {
+        if( d[0] === '[' ) {
+          imgs = eval( d ) ;
+        } else {
+          score.innerHTML = d ;
+        }
+      } else {
+        var rdr = new FileReader();
+        rdr.addEventListener("loadend", function() {
+          var indat = new Uint8Array( this.result ) ;
+          var ix = 0 ;  // index of data in bitmaps from server
+          var px ;
+          // DO THE INTERMEDIATE LAYERS
+          for( var j=0 ; j<imgs.length-1 ; j++ ) {
+            var imgLength = imgs[j] ;
+            var imgData2 = ctxResult.createImageData( 1200, 4 ) ;  // size of image is o/p rows x cols
+            for( var i=0; i <imgs[j] ; i++ ) {
+              px = 4 * i ;
+              imgData2.data[px+0] = indat[ix] ; 
+              imgData2.data[px+1] = indat[ix] ; 
+              imgData2.data[px+2] = indat[ix] ; 
+              imgData2.data[px+3] = 255 ;
+              ix++ ;
+            } 
+            ctxLayers.putImageData(imgData2, 0, j*4+0 );
+            ctxLayers.putImageData(imgData2, 0, j*4+1 );
+            ctxLayers.putImageData(imgData2, 0, j*4+2 );
+            ctxLayers.putImageData(imgData2, 0, j*4+3 );
+          }
+          
+          // LAST IMAGE == actual output
+          var imgData = ctxResult.createImageData( 28, 28 ) ;  // size of image is o/p rows x cols
+          for( var r=0 ; r<28 ; r++ ) { // height of each digit is 28
+            for( var c=0 ; c<28 ; c++ ) { // width of the digit
+              px = 4 * ( r * 28 + c ) ;
+              imgData.data[px+0] = indat[ix] ; 
+              imgData.data[px+1] = indat[ix] ; 
+              imgData.data[px+2] = indat[ix] ; 
+              imgData.data[px+3] = 255 ;
+              ix++ ;
+            }
+          }
+          ctxResult.putImageData(imgData, 0, 0 );                    
+        });
+        rdr.readAsArrayBuffer( event.data );
+      }
+    }
+    
+    
+    webSocket.onopen = function (event) {
+      this.send( "start" ) ;
+    }    
+    
+    var draw = document.getElementById( "draw" ) ;
+    var ctxDraw = draw.getContext("2d");
+    
+    ctxDraw.strokeStyle = "black" ;
+    var imgWidth = draw.width;
+    var imgHeight = draw.height;
+    
+    draw.onmousemove = function(e) {
+      var x = e.clientX - this.offsetLeft + window.scrollX ;
+      var y = e.clientY - this.offsetTop + window.scrollY ;
+      if( e.buttons === 0 ) {
+        ctxDraw.moveTo( x, y ) ;
+      } else {
+        ctxDraw.lineTo( x, y ) ;
+      }
+      ctxDraw.stroke() ;
+    }
+    
+    var btn = document.getElementById( "process" ) ;
+    btn.onclick = function(e) {      
+      var imgData = ctxDraw.getImageData( 0, 0, imgWidth, imgHeight ) ;
+      var pixelarray = imgData.data;
+      var pixellen = pixelarray.length;
+      var bytearray = new Uint8Array(pixellen);
+
+      for (var i=0;i<pixellen;++i) {
+        bytearray[i] = pixelarray[i];
+      }
+      webSocket.send( bytearray.buffer ) ; 
+    }
+
+    var btn2 = document.getElementById( "clear" ) ;
+    btn2.onclick = function(e) {
+      ctxDraw.beginPath() ;
+      ctxDraw.clearRect(0, 0, draw.width, draw.height);
+      ctxDraw.fill() ;
+      ctxDraw.stroke() ;
+      /*
+      ctxResult.beginPath() ;
+      ctxResult.clearRect(0, 0, result.width, result.height);
+      ctxResult.fill() ;
+      ctxResult.stroke() ;
+      */
+    }
+    
+    
